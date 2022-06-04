@@ -1,0 +1,31 @@
+plugins {
+    id 'java'
+    id 'application'
+    id "io.freefair.lombok" version "6.4.3"
+    id "com.github.johnrengelman.shadow" version "7.1.2"
+}
+
+group 'com.tech.teams'
+version '1.0-SNAPSHOT'
+
+mainClassName = 'com.tech.teams.Program'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    runtimeOnly 'org.postgresql:postgresql:42.3.6'
+
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
+    implementation 'com.yahoo.elide:elide-standalone:6.1.5'
+    implementation 'com.yahoo.elide:elide-datastore-search:6.1.5'
+    implementation 'org.liquibase:liquibase-core:4.10.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
+}
+
+test {
+    useJUnitPlatform()
+}
