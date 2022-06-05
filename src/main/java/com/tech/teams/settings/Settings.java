@@ -1,8 +1,30 @@
 package com.tech.teams.settings;
 
+import static com.yahoo.elide.datastores.jpa.JpaDataStore.DEFAULT_LOGGER;
+
+import java.io.IOException;
+import java.sql.DriverManager;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Properties;
+
+import javax.persistence.EntityManagerFactory;
+
+import com.yahoo.elide.ElideSettings;
+import org.eclipse.jetty.server.handler.ResourceHandler;
+import org.eclipse.jetty.servlet.ServletContextHandler;
+
 import com.google.common.collect.Lists;
 import com.tech.teams.Program;
+import com.tech.teams.entity.Profile;
+import com.tech.teams.filters.CorsFilter;
+import com.tech.teams.hooks.SaveProfileHook;
+import com.yahoo.elide.annotation.LifeCycleHookBinding.Operation;
+import com.yahoo.elide.annotation.LifeCycleHookBinding.TransactionPhase;
 import com.yahoo.elide.core.datastore.DataStore;
+import com.yahoo.elide.core.dictionary.EntityDictionary;
 import com.yahoo.elide.datastores.aggregation.AggregationDataStore;
 import com.yahoo.elide.datastores.aggregation.metadata.MetaDataStore;
 import com.yahoo.elide.datastores.aggregation.queryengines.sql.dialects.SQLDialectFactory;
@@ -11,30 +33,24 @@ import com.yahoo.elide.datastores.jpa.JpaDataStore;
 import com.yahoo.elide.datastores.jpa.transaction.NonJtaTransaction;
 import com.yahoo.elide.datastores.multiplex.MultiplexManager;
 import com.yahoo.elide.datastores.search.SearchDataStore;
+import com.yahoo.elide.jsonapi.JsonApiMapper;
 import com.yahoo.elide.modelconfig.store.ConfigDataStore;
 import com.yahoo.elide.standalone.config.ElideStandaloneAnalyticSettings;
 import com.yahoo.elide.standalone.config.ElideStandaloneAsyncSettings;
 import com.yahoo.elide.standalone.config.ElideStandaloneSettings;
-import com.tech.teams.filters.CorsFilter;
+
 import liquibase.Liquibase;
 import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
-import org.eclipse.jetty.server.handler.ResourceHandler;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-
-import javax.persistence.EntityManagerFactory;
-import java.io.IOException;
-import java.sql.DriverManager;
-import java.util.*;
-
-import static com.yahoo.elide.datastores.jpa.JpaDataStore.DEFAULT_LOGGER;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * This class contains common settings for both test and production.
  */
-public abstract class ElideSettings implements ElideStandaloneSettings {
+@Slf4j
+public abstract class Settings implements ElideStandaloneSettings {
 
     protected String jdbcUrl;
     protected String jdbcUser;
@@ -42,7 +58,7 @@ public abstract class ElideSettings implements ElideStandaloneSettings {
 
     protected boolean inMemory;
 
-    public ElideSettings(boolean inMemory) {
+    public Settings(boolean inMemory) {
         jdbcUrl = Optional.ofNullable(System.getenv("JDBC_DATABASE_URL"))
                 .orElse("jdbc:h2:mem:db1;DB_CLOSE_DELAY=-1");
 
@@ -57,7 +73,7 @@ public abstract class ElideSettings implements ElideStandaloneSettings {
 
     @Override
     public int getPort() {
-        //Heroku exports port to come from $PORT
+        // Heroku exports port to come from $PORT
         return Optional.ofNullable(System.getenv("PORT"))
                 .map(Integer::valueOf)
                 .orElse(8080);
@@ -79,11 +95,19 @@ public abstract class ElideSettings implements ElideStandaloneSettings {
     }
 
     @Override
+    public ElideSettings getElideSettings(EntityDictionary dictionary, DataStore dataStore,
+                                          JsonApiMapper mapper) {
+        dictionary.bindTrigger(Profile.class, Operation.CREATE, TransactionPhase.POSTCOMMIT, new SaveProfileHook(),
+                false);
+        return ElideStandaloneSettings.super.getElideSettings(dictionary, dataStore,
+                mapper);
+    }
+
+    @Override
     public DataStore getDataStore(MetaDataStore metaDataStore, AggregationDataStore aggregationDataStore,
                                   EntityManagerFactory entityManagerFactory) {
 
         List<DataStore> stores = new ArrayList<>();
-
 
         DataStore jpaDataStore = new JpaDataStore(
                 entityManagerFactory::createEntityManager,
@@ -169,8 +193,7 @@ public abstract class ElideSettings implements ElideStandaloneSettings {
         try {
             dbProps = new Properties();
             dbProps.load(
-                    Program.class.getClassLoader().getResourceAsStream("dbconfig.properties")
-            );
+                    Program.class.getClassLoader().getResourceAsStream("dbconfig.properties"));
 
             dbProps.setProperty("javax.persistence.jdbc.url", jdbcUrl);
             dbProps.setProperty("javax.persistence.jdbc.user", jdbcUser);
@@ -192,7 +215,7 @@ public abstract class ElideSettings implements ElideStandaloneSettings {
 
         try {
             resource_handler.setDirectoriesListed(false);
-            resource_handler.setResourceBase(Objects.requireNonNull(ElideSettings.class.getClassLoader()
+            resource_handler.setResourceBase(Objects.requireNonNull(Settings.class.getClassLoader()
                     .getResource("META-INF/resources/")).toURI().toString());
             servletContextHandler.insertHandler(resource_handler);
         } catch (Exception e) {
@@ -218,15 +241,15 @@ public abstract class ElideSettings implements ElideStandaloneSettings {
     }
 
     public void runLiquibaseMigrations() throws Exception {
-        //Run Liquibase Initialization Script
+        // Run Liquibase Initialization Script
         Database database = DatabaseFactory.getInstance().findCorrectDatabaseImplementation(
                 new JdbcConnection(DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword)));
 
-        Liquibase liquibase = new liquibase.Liquibase(
-                "db/changelog/changelog.xml",
-                new ClassLoaderResourceAccessor(),
-                database);
-
-        liquibase.update("db1");
+        try (Liquibase liquibase = new liquibase.Liquibase("db/changelog/changelog.xml",
+                new ClassLoaderResourceAccessor(), database)) {
+            liquibase.update("db1");
+        } catch (Exception e) {
+            log.error("Unable to apply migrations {0}", e.getCause());
+        }
     }
 }

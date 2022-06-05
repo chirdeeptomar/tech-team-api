@@ -16,34 +16,28 @@ import java.util.UUID;
 @Entity
 @Indexed
 @Include(name = "profiles")
-@AnalyzerDef(name = "case_insensitive",
-        tokenizer = @TokenizerDef(factory = NGramTokenizerFactory.class, params = {
-                @Parameter(name = "minGramSize", value = "3"),
-                @Parameter(name = "maxGramSize", value = "10")
-        }),
-        filters = {
-                @TokenFilterDef(factory = LowerCaseFilterFactory.class)
-        }
-)
+@AnalyzerDef(name = "case_insensitive", tokenizer = @TokenizerDef(factory = NGramTokenizerFactory.class, params = {
+        @Parameter(name = "minGramSize", value = "3"),
+        @Parameter(name = "maxGramSize", value = "10")
+}), filters = {
+        @TokenFilterDef(factory = LowerCaseFilterFactory.class)
+})
 public class Profile {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
     @Fields({
-            @Field(name = "name", index = Index.YES, store = Store.YES,
-                    analyze = Analyze.YES, analyzer = @Analyzer(definition = "case_insensitive")),
+            @Field(name = "name", index = Index.YES, store = Store.YES, analyze = Analyze.YES, analyzer = @Analyzer(definition = "case_insensitive")),
             @Field(name = "sortName", analyze = Analyze.NO, store = Store.NO, index = Index.YES)
     })
     @SortableField(forField = "sortName")
     private String name;
 
     @Fields({
-            @Field(name = "email", index = Index.YES, store = Store.YES,
-                    analyze = Analyze.YES, analyzer = @Analyzer(definition = "case_insensitive"))
+            @Field(name = "email", index = Index.YES, store = Store.YES, analyze = Analyze.YES, analyzer = @Analyzer(definition = "case_insensitive"))
     })
     private String email;
-
 
     @Fields({
             @Field(name = "sortExperience", analyze = Analyze.NO, store = Store.NO, index = Index.YES)
